@@ -2,7 +2,7 @@
 // 山屋惊魂 v3 — Client (Vercel 版)
 // WebSocket 端点从 config.js 中的 window.WS_ENDPOINT 读取
 // ══════════════════════════════════════════════════════════════════════════════
-const Game = (() => {
+window.Game = (() => {
   let ws, myId, state;
   let currentFloor = 'ground';
   let lastHauntShown = false;

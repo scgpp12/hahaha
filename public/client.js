@@ -2,7 +2,7 @@
 // 山屋惊魂 v3 — Client
 // 规则修正版：移动不掷骰 | 摸牌后回合自动结束 | 攻击每回合一次 | 凶兆固定6骰
 // ══════════════════════════════════════════════════════════════════════════════
-const Game = (() => {
+window.Game = (() => {
   let ws, myId, state;
   let currentFloor = 'ground';
   let lastHauntShown = false;
