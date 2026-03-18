@@ -1,0 +1,11 @@
+{
+  "name": "swjh-lambda",
+  "version": "1.0.0",
+  "description": "山屋惊魂 WebSocket Lambda Handlers",
+  "main": "message.js",
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.0.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0"
+  }
+}
