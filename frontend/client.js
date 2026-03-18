@@ -11,15 +11,29 @@ window.Game = (() => {
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
   function connect(onOpen) {
-    // 优先使用 config.js 中配置的 AWS API Gateway WebSocket URL
+    // 若已有连接正在建立或已开启，不重复创建
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+      if (ws.readyState === WebSocket.OPEN) onOpen();
+      else ws.addEventListener('open', onOpen, { once: true });
+      return;
+    }
+
     const url = (window.WS_ENDPOINT && !window.WS_ENDPOINT.includes('YOUR_API_ID'))
       ? window.WS_ENDPOINT
       : (() => { const p = location.protocol === 'https:' ? 'wss:' : 'ws:'; return `${p}//${location.host}`; })();
 
-    ws = new WebSocket(url);
-    ws.onopen = onOpen;
-    ws.onmessage = e => {
-      const msg = JSON.parse(e.data);
+    console.log('[WS] connecting to', url);
+    const socket = new WebSocket(url);
+    ws = socket;
+
+    socket.addEventListener('open', () => {
+      console.log('[WS] open, readyState=', socket.readyState);
+      onOpen();
+    }, { once: true });
+
+    socket.onmessage = e => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch(err) { console.error('[WS] bad json', e.data); return; }
       if (msg.type === 'game_created' || msg.type === 'game_joined') {
         myId = msg.playerId;
         switchScreen('charsel');
@@ -34,10 +48,27 @@ window.Game = (() => {
         showError(msg.msg);
       }
     };
-    ws.onclose = () => { if (state) showError('与服务器的连接已断开'); };
+
+    socket.onerror = (e) => { console.error('[WS] error', e); };
+    socket.onclose = (e) => {
+      console.warn('[WS] closed', e.code, e.reason);
+      if (ws === socket) ws = null;
+      if (state) showError('与服务器的连接已断开');
+    };
   }
 
-  function send(obj) { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+  function send(obj) {
+    if (ws?.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify(obj));
+        console.log('[WS] sent', obj.type);
+      } catch(e) {
+        console.error('[WS] send error', e);
+      }
+    } else {
+      console.warn('[WS] send skipped, readyState=', ws?.readyState);
+    }
+  }
 
   function switchScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
