@@ -10,25 +10,35 @@ window.Game = (() => {
   let diceRollInProgress = false;
 
   // ── WebSocket ──────────────────────────────────────────────────────────────
-  function connect(onOpen) {
-    // 若已有连接正在建立或已开启，不重复创建
-    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-      if (ws.readyState === WebSocket.OPEN) onOpen();
-      else ws.addEventListener('open', onOpen, { once: true });
-      return;
-    }
+  let _reconnectTimer = null;
+  let _reconnectDelay = 1000;   // 首次重连等1秒，之后指数退避
+  let _pendingOnOpen = null;    // 重连成功后需要执行的动作
 
-    const url = (window.WS_ENDPOINT && !window.WS_ENDPOINT.includes('YOUR_API_ID'))
-      ? window.WS_ENDPOINT
-      : (() => { const p = location.protocol === 'https:' ? 'wss:' : 'ws:'; return `${p}//${location.host}`; })();
+  const WS_URL = (window.WS_ENDPOINT && !window.WS_ENDPOINT.includes('YOUR_API_ID'))
+    ? window.WS_ENDPOINT
+    : (() => { const p = location.protocol === 'https:' ? 'wss:' : 'ws:'; return `${p}//${location.host}`; })();
 
-    console.log('[WS] connecting to', url);
-    const socket = new WebSocket(url);
+  function _createSocket() {
+    console.log('[WS] connecting to', WS_URL);
+    const socket = new WebSocket(WS_URL);
     ws = socket;
 
     socket.addEventListener('open', () => {
-      console.log('[WS] open, readyState=', socket.readyState);
-      onOpen();
+      console.log('[WS] open');
+      _reconnectDelay = 1000; // 重置退避
+      clearTimeout(_reconnectTimer);
+
+      // 显示重连成功提示（仅在游戏进行中断开后重连）
+      if (state) {
+        showReconnectBanner(false);
+        // 重新拉取游戏状态（服务端有 TTL 保留状态）
+        send({ type: 'rejoin', data: { gameCode: state.code, playerId: myId } });
+      }
+
+      if (_pendingOnOpen) {
+        _pendingOnOpen();
+        _pendingOnOpen = null;
+      }
     }, { once: true });
 
     socket.onmessage = e => {
@@ -49,12 +59,51 @@ window.Game = (() => {
       }
     };
 
-    socket.onerror = (e) => { console.error('[WS] error', e); };
+    socket.onerror = () => { console.error('[WS] error'); };
     socket.onclose = (e) => {
       console.warn('[WS] closed', e.code, e.reason);
       if (ws === socket) ws = null;
-      if (state) showError('与服务器的连接已断开');
+
+      // 游戏进行中断线 → 自动重连
+      if (state && state.phase !== 'gameover') {
+        showReconnectBanner(true);
+        _reconnectTimer = setTimeout(() => {
+          _reconnectDelay = Math.min(_reconnectDelay * 2, 16000);
+          _createSocket();
+        }, _reconnectDelay);
+      } else if (state) {
+        showError('与服务器的连接已断开');
+      }
     };
+  }
+
+  function showReconnectBanner(show) {
+    let banner = document.getElementById('reconnectBanner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'reconnectBanner';
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c62828;color:#fff;text-align:center;padding:8px;z-index:9999;font-size:14px;';
+      document.body.appendChild(banner);
+    }
+    if (show) {
+      banner.textContent = '⚠ 连接已断开，正在重连...';
+      banner.style.display = 'block';
+    } else {
+      banner.textContent = '✓ 已重新连接';
+      banner.style.background = '#2e7d32';
+      setTimeout(() => { banner.style.display = 'none'; banner.style.background = '#c62828'; }, 2000);
+    }
+  }
+
+  function connect(onOpen) {
+    // 若已有连接正在建立或已开启，不重复创建
+    if (ws && ws.readyState === WebSocket.OPEN) { onOpen(); return; }
+    if (ws && ws.readyState === WebSocket.CONNECTING) {
+      _pendingOnOpen = onOpen;
+      return;
+    }
+    _pendingOnOpen = onOpen;
+    _createSocket();
   }
 
   function send(obj) {

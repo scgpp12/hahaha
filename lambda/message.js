@@ -60,6 +60,24 @@ exports.handler = async (event) => {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // rejoin — 断线重连，用原有 playerId 恢复会话
+  // ──────────────────────────────────────────────────────────────────────────
+  if (type === 'rejoin') {
+    const code     = (data.gameCode || '').toUpperCase().trim();
+    const playerId = data.playerId || '';
+    const game = await getGame(code);
+    if (!game || !game.players[playerId]) {
+      await reply(connectionId, { type: 'error', msg: '无法恢复会话，请重新加入游戏' });
+      return { statusCode: 200 };
+    }
+    // 更新连接记录到新的 connectionId
+    await saveConnection(connectionId, code, playerId);
+    await reply(connectionId, { type: 'game_joined', playerId, code });
+    await reply(connectionId, { type: 'state', data: publicState(game, playerId) });
+    return { statusCode: 200 };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   // join_game — 加入已有房间
   // ──────────────────────────────────────────────────────────────────────────
   if (type === 'join_game') {
