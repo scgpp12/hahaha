@@ -9,6 +9,23 @@ window.Game = (() => {
   let lastGameoverShown = false;
   let diceRollInProgress = false;
 
+  // ── Session 持久化（刷新恢复用）─────────────────────────────────────────────
+  const SESSION_KEY = 'swjh_session';
+
+  function saveSession() {
+    if (myId && state?.code) {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({ myId, gameCode: state.code }));
+    }
+  }
+
+  function clearSession() {
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+
+  function loadSession() {
+    try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch { return null; }
+  }
+
   // ── WebSocket ──────────────────────────────────────────────────────────────
   let _reconnectTimer = null;
   let _reconnectDelay = 1000;   // 首次重连等1秒，之后指数退避
@@ -28,10 +45,9 @@ window.Game = (() => {
       _reconnectDelay = 1000; // 重置退避
       clearTimeout(_reconnectTimer);
 
-      // 显示重连成功提示（仅在游戏进行中断开后重连）
+      // 重连成功（断网恢复）
       if (state) {
         showReconnectBanner(false);
-        // 重新拉取游戏状态（服务端有 TTL 保留状态）
         send({ type: 'rejoin', data: { gameCode: state.code, playerId: myId } });
       }
 
@@ -49,9 +65,11 @@ window.Game = (() => {
         switchScreen('charsel');
         document.getElementById('codeDisplay').textContent = msg.code;
         document.getElementById('tbCode').textContent = msg.code;
+        saveSession();
       } else if (msg.type === 'state') {
         const prev = state;
         state = msg.data;
+        saveSession(); // 每次收到状态更新都持久化
         if (state.phase !== 'lobby') switchScreen('game');
         render(prev);
       } else if (msg.type === 'error') {
@@ -131,15 +149,28 @@ window.Game = (() => {
   }
 
   function createRoom() {
+    clearSession();
     const name = document.getElementById('createName').value.trim() || '房主';
     connect(() => send({ type:'create_game', data:{ name } }));
   }
 
   function joinRoom() {
+    clearSession();
     const name = document.getElementById('joinName').value.trim() || '玩家';
     const code = document.getElementById('joinCode').value.trim().toUpperCase();
     if (!code) { showError('请输入房间代码'); return; }
     connect(() => send({ type:'join_game', data:{ name, code } }));
+  }
+
+  // ── 页面加载时检查是否有未完成的会话（刷新恢复）──────────────────────────────
+  function tryRestoreSession() {
+    const saved = loadSession();
+    if (!saved?.myId || !saved?.gameCode) return;
+    myId = saved.myId;
+    showReconnectBanner(true);
+    connect(() => {
+      send({ type: 'rejoin', data: { gameCode: saved.gameCode, playerId: saved.myId } });
+    });
   }
 
   const CHARS = [
@@ -419,6 +450,7 @@ window.Game = (() => {
     }
     if (state.phase==='gameover' && !lastGameoverShown) {
       lastGameoverShown=true;
+      clearSession(); // 游戏正式结束，清除恢复凭证
       const win=state.winner;
       document.getElementById('goIcon').textContent=win==='heroes'?'🎉':'💀';
       document.getElementById('goTitle').textContent=win==='heroes'?'英雄胜利！':'叛徒胜利！';
@@ -439,6 +471,7 @@ window.Game = (() => {
   function endTurn()           { send({type:'end_turn',data:{}}); }
   function attack(targetId)    { send({type:'attack',data:{targetId}}); }
   function restart() {
+    clearSession();
     lastHauntShown=false; lastGameoverShown=false;
     send({type:'restart',data:{}});
     document.getElementById('gameoverOverlay').style.display='none';
@@ -452,6 +485,14 @@ window.Game = (() => {
       const floors=['ground','upper','basement'];
       switchFloor(floors[(floors.indexOf(currentFloor)+1)%3]);
     }
+  });
+
+  // 游戏结束时清除 session
+  const _origRenderOverlays = renderOverlays;
+
+  // ── 页面加载：若有未完成会话，自动重连恢复 ────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    tryRestoreSession();
   });
 
   return { createRoom, joinRoom, selectChar, startGame, rollDice, drawCard, move, endTurn, attack, switchFloor, restart, showCard, showCardById, showCurrentCard };
