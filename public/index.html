@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>山屋惊魂</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ══ SCREEN: Lobby ══════════════════════════════════════════════════════ -->
+<div id="screen-lobby" class="screen active">
+  <div class="lobby-wrap">
+    <div class="lobby-header">
+      <div class="lobby-title">山屋惊魂</div>
+      <div class="lobby-sub">Betrayal at House on the Hill · WebSocket 多人版</div>
+    </div>
+    <div class="lobby-panels">
+      <div class="lobby-panel">
+        <h3>创建房间</h3>
+        <input id="createName" type="text" placeholder="你的名字" maxlength="12" autocomplete="off">
+        <button onclick="Game.createRoom()">创建新游戏</button>
+      </div>
+      <div class="lobby-divider">或</div>
+      <div class="lobby-panel">
+        <h3>加入房间</h3>
+        <input id="joinName" type="text" placeholder="你的名字" maxlength="12" autocomplete="off">
+        <input id="joinCode" type="text" placeholder="房间代码（4位）" maxlength="4" style="text-transform:uppercase">
+        <button onclick="Game.joinRoom()">加入游戏</button>
+      </div>
+    </div>
+    <div class="lobby-rules">
+      <b>🎮 v3 规则（参照官方规则书）：</b><br>
+      ① 每回合直接移动，步数 = 当前<b>速度属性值</b>（无需掷骰）<br>
+      ② 进入带符号的新房间必须<b>停止移动并摸牌</b>，摸牌结算后<b>本回合自动结束</b><br>
+      ③ 事件/凶兆牌可能需要<b>属性检定</b>（掷对应属性值数量的骰子）<br>
+      ④ 摸到凶兆牌后，回合末<b>固定掷6枚骰子</b>进行凶兆检定（结果小于凶兆总数则幽灵降临）<br>
+      ⑤ 幽灵降临后每回合可<b>攻击一次</b>（需在同一房间），攻击不结束回合<br>
+      ⑥ 鬼魂降临前属性最低为 1，不会死亡
+    </div>
+    <div id="lobbyError" class="error-msg"></div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: Character Select ═══════════════════════════════════════════ -->
+<div id="screen-charsel" class="screen">
+  <div class="charsel-wrap">
+    <div class="charsel-header">
+      <h2>选择你的角色</h2>
+      <div class="room-code-display">房间代码：<span id="codeDisplay"></span></div>
+    </div>
+    <div id="charCards" class="char-grid"></div>
+    <div class="charsel-footer">
+      <div id="charselStatus"></div>
+      <button id="startBtn" onclick="Game.startGame()" style="display:none">▶ 开始游戏</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN: Game ════════════════════════════════════════════════════════ -->
+<div id="screen-game" class="screen">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <div id="topbarLeft">
+      <span class="tb-code">🏚 <span id="tbCode"></span></span>
+      <span id="tbPhase" class="tb-badge">探索中</span>
+    </div>
+    <div id="topbarCenter">
+      <span id="tbTurn">等待开始</span>
+    </div>
+    <div id="topbarRight">
+      <span id="tbOmen">🩸 凶兆 <span id="omenVal">0</span></span>
+    </div>
+  </div>
+
+  <!-- Main layout: Left | Center | Right -->
+  <div id="gameLayout">
+
+    <!-- Left: Players -->
+    <div id="playersPanel">
+      <div class="panel-title">玩家状态</div>
+      <div id="playersList"></div>
+    </div>
+
+    <!-- Center: Board + Action Console -->
+    <div id="boardArea">
+      <div id="floorTabs">
+        <button class="floor-tab active" data-floor="ground"   onclick="Game.switchFloor('ground')">🏠 地面层</button>
+        <button class="floor-tab"        data-floor="upper"    onclick="Game.switchFloor('upper')">🪟 二楼</button>
+        <button class="floor-tab"        data-floor="basement" onclick="Game.switchFloor('basement')">🕳 地下室</button>
+      </div>
+      <div id="boardGrid"></div>
+      <!-- Action Console: shows what the current player must do -->
+      <div id="actionConsole"></div>
+    </div>
+
+    <!-- Right: Log + Card History -->
+    <div id="rightPanel">
+      <div class="panel-title">事件记录</div>
+      <div id="eventLog"></div>
+      <div class="panel-title panel-title-sm" style="margin-top:6px">
+        已翻开的牌
+        <span class="view-current-btn" onclick="Game.showCurrentCard()" title="查看最近一张牌">👁 最近</span>
+      </div>
+      <div id="cardHistory"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: Card detail ══════════════════════════════════════════════════ -->
+<div id="cardModal" class="modal" style="display:none" onclick="this.style.display='none'">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div id="modalType" class="modal-type"></div>
+    <div id="modalName" class="modal-name"></div>
+    <div id="modalFlavor" class="modal-flavor"></div>
+    <div id="modalEffectArea"></div>
+    <button onclick="document.getElementById('cardModal').style.display='none'">关闭</button>
+  </div>
+</div>
+
+<!-- ══ OVERLAY: Haunt ═════════════════════════════════════════════════════ -->
+<div id="hauntOverlay" class="overlay" style="display:none">
+  <div class="overlay-box haunt-box">
+    <div class="overlay-icon">☠️</div>
+    <h2>幽灵降临</h2>
+    <div id="hauntScenario" class="haunt-scenario"></div>
+    <div id="hauntRole" class="haunt-role"></div>
+    <div id="hauntGoal" class="haunt-goal"></div>
+    <button onclick="document.getElementById('hauntOverlay').style.display='none'">我明白了</button>
+  </div>
+</div>
+
+<!-- ══ OVERLAY: Game over ════════════════════════════════════════════════ -->
+<div id="gameoverOverlay" class="overlay" style="display:none">
+  <div class="overlay-box">
+    <div id="goIcon" class="overlay-icon"></div>
+    <h2 id="goTitle"></h2>
+    <p id="goMsg"></p>
+    <button id="goRestart" onclick="Game.restart()" style="display:none">重新开始</button>
+    <button onclick="location.reload()">返回大厅</button>
+  </div>
+</div>
+
+<script src="client.js"></script>
+</body>
+</html>
