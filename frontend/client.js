@@ -491,9 +491,8 @@ window.Game = (() => {
   const _origRenderOverlays = renderOverlays;
 
   // ── 页面加载：若有未完成会话，自动重连恢复 ────────────────────────────────────
-  document.addEventListener('DOMContentLoaded', () => {
-    tryRestoreSession();
-  });
+  // client.js 在 <body> 底部加载，DOM 已就绪，直接调用（不能等 DOMContentLoaded，因为事件已触发）
+  tryRestoreSession();
 
   return { createRoom, joinRoom, selectChar, startGame, rollDice, drawCard, move, endTurn, attack, switchFloor, restart, showCard, showCardById, showCurrentCard };
 })();
