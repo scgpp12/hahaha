@@ -18,15 +18,15 @@ const TTL_SEC     = 86400; // 24 小时 DynamoDB TTL
 
 // ── 连接表 ────────────────────────────────────────────────────────────────────
 async function saveConnection(connectionId, gameCode, playerId) {
-  await dynamo.send(new PutCommand({
-    TableName: CONN_TABLE,
-    Item: {
-      connectionId,
-      gameCode,
-      playerId,
-      ttl: Math.floor(Date.now() / 1000) + TTL_SEC,
-    },
-  }));
+  // DynamoDB GSI 键不允许空字符串——没有 gameCode 时不写该属性
+  const item = {
+    connectionId,
+    ttl: Math.floor(Date.now() / 1000) + TTL_SEC,
+  };
+  if (gameCode) item.gameCode = gameCode;
+  if (playerId) item.playerId = playerId;
+
+  await dynamo.send(new PutCommand({ TableName: CONN_TABLE, Item: item }));
 }
 
 async function getConnection(connectionId) {

@@ -8,8 +8,8 @@ exports.handler = async (event) => {
   const connectionId = event.requestContext.connectionId;
   console.log('connect', connectionId);
 
-  // 先以空 gameCode 写入，等 create_game/join_game 再更新
-  await saveConnection(connectionId, '', '');
+  // 仅写入 connectionId，gameCode/playerId 在 create_game/join_game 时更新
+  await saveConnection(connectionId, null, null);
 
   return { statusCode: 200, body: 'Connected' };
 };
