@@ -30,6 +30,7 @@ window.Game = (() => {
   let _reconnectTimer = null;
   let _reconnectDelay = 1000;   // 首次重连等1秒，之后指数退避
   let _pendingOnOpen = null;    // 重连成功后需要执行的动作
+  let _waitingForRejoin = false; // 标记：正在等待 rejoin 响应（刷新恢复）
 
   const WS_URL = (window.WS_ENDPOINT && !window.WS_ENDPOINT.includes('YOUR_API_ID'))
     ? window.WS_ENDPOINT
@@ -45,9 +46,8 @@ window.Game = (() => {
       _reconnectDelay = 1000; // 重置退避
       clearTimeout(_reconnectTimer);
 
-      // 重连成功（断网恢复）
-      if (state) {
-        showReconnectBanner(false);
+      // 断网自动重连成功：state 已有，直接发 rejoin
+      if (state && !_pendingOnOpen) {
         send({ type: 'rejoin', data: { gameCode: state.code, playerId: myId } });
       }
 
@@ -70,6 +70,15 @@ window.Game = (() => {
         const prev = state;
         state = msg.data;
         saveSession(); // 每次收到状态更新都持久化
+        // 收到 state 即表示连接/重连成功，清除重连横幅
+        if (_waitingForRejoin) {
+          _waitingForRejoin = false;
+          showReconnectBanner(false);
+        } else {
+          // 网络断开自动重连后，横幅也可能在显示
+          const banner = document.getElementById('reconnectBanner');
+          if (banner && banner.style.display !== 'none') showReconnectBanner(false);
+        }
         if (state.phase !== 'lobby') switchScreen('game');
         render(prev);
       } else if (msg.type === 'error') {
@@ -134,6 +143,10 @@ window.Game = (() => {
       }
     } else {
       console.warn('[WS] send skipped, readyState=', ws?.readyState);
+      // 如果连接还未建立，给用户可见提示
+      if (obj.type !== 'rejoin') {
+        showError('正在重新连接服务器，请稍候再试…');
+      }
     }
   }
 
@@ -167,6 +180,7 @@ window.Game = (() => {
     const saved = loadSession();
     if (!saved?.myId || !saved?.gameCode) return;
     myId = saved.myId;
+    _waitingForRejoin = true;
     showReconnectBanner(true);
     connect(() => {
       send({ type: 'rejoin', data: { gameCode: saved.gameCode, playerId: saved.myId } });
